@@ -63,47 +63,62 @@ class CentralityFeatures(BaseEstimator, TransformerMixin):
                 all_rows.append(row_data)
         
         return pd.DataFrame(all_rows)
-    
+
 class StructuralFeatures(BaseEstimator, TransformerMixin):
     """Class to compute structural features for nodes in a graph"""
     
     def __init__(self):
         self.graph_dict = {}
-        self.feature_names = ['subtree_size']
+        self.feature_names = ['max_depth', 'avg_depth', 'subtree_size']
     
-    def _calculate_subtree_sizes(self, edgelist):
+    def _max_depth_from_node(self, G, node):
+        """Longest directed path from node to any leaf in its subtree."""
+        if G.out_degree(node) == 0:  # Leaf node
+            return 0
+        return 1 + max(self._max_depth_from_node(G, child) 
+                      for child in G.successors(node))
+    
+    def _avg_depth_from_node(self, G, node):
+        """Mean directed distance to leaves in the subtree."""
+        leaves = [n for n in nx.descendants(G, node) if G.out_degree(n) == 0]
+        if not leaves:
+            return 0  # Node is a leaf
+        distances = [nx.shortest_path_length(G, node, leaf) for leaf in leaves]
+        return sum(distances) / len(distances)
+    
+    def _subtree_size(self, G, node):
+        """Number of nodes in the subtree rooted at this node (including self)"""
+        return 1 + len(nx.descendants(G, node))
+    
+    def _compute_features(self, edgelist, vertex):
+        
         edges = ast.literal_eval(edgelist)
-        children_map = {}
-        for parent, child in edges:
-            children_map.setdefault(parent, []).append(child)
+        G = nx.DiGraph(edges)
         
-        cache = {}
-        def _subtree_size(node):
-            if node in cache:
-                return cache[node]
-            size = 1 + sum(_subtree_size(child) for child in children_map.get(node, []))
-            cache[node] = size
-            return size
-        
-        nodes = set(n for edge in edges for n in edge)
-        return {node: _subtree_size(node) for node in nodes}
+        if not G.has_node(vertex):
+            return [0, 0, 0]
+            
+        return [
+            self._max_depth_from_node(G, vertex),
+            self._avg_depth_from_node(G, vertex),
+            self._subtree_size(G, vertex)
+        ]
     
     def fit(self, X, y=None):
         return self
-  
+
     def transform(self, X):
         results = []
-        for _, row in X.iterrows():
-            edgelist = row['edgelist']
-            vertex = row['vertex']
-            
-            subtree_sizes = self._calculate_subtree_sizes(edgelist)
-            size = subtree_sizes.get(vertex, 0)
-            results.append(pd.Series([size], index=self.feature_names))
         
-        # Return DataFrame with same index as input
-        return pd.DataFrame(results, index=X.index)
-
+        for _, row in X.iterrows():
+            features = self._compute_features(
+                row['edgelist'], 
+                row['vertex']
+            )
+            results.append(pd.Series(features, index=self.feature_names))
+        
+        return pd.concat(results, axis=1).transpose()
+    
 class GraphFeaturePipeline(BaseEstimator, TransformerMixin):
     def __init__(self, is_test=False):
         self.is_test = is_test
