@@ -19,7 +19,7 @@ To run the model:
 --------------------------------------
 
 For other models:
-Please follow the steps in project.ipynb file.
+Please follow the steps in src/for-submission/project.ipynb file.
 1) To train the final models, you can follow the steps under "Final train and testing" section. Alternatively, already trained models can be loaded from pickle files using commands import joblib and joblib.load('../src/ens_final.pkl')
 2) The hyperparameter tuning process is described under "Hyperparameter Tuning" section
 3) Validation and feature importances can also be run under "Validation" and "Extract feature importances" section
